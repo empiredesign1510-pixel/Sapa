@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="id" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sapa - Room Chat</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: { colors: { sapa: { light: '#14b8a6', dark: '#0f766e', accent: '#facc15' } }, boxShadow: { '3d': '0 4px 0 0 rgba(0, 0, 0, 0.2)', '3d-active': '0 0px 0 0 rgba(0, 0, 0, 0.2)' } }
+            }
+        }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        body, html { overscroll-behavior-y: contain; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.5); border-radius: 10px; }
+        
+        .bg-animated { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #f3f4f6; z-index: -2; transition: background 0.5s ease; }
+        .dark .bg-animated { background: #111827; }
+        .blob { position: absolute; border-radius: 50%; filter: blur(80px); z-index: -1; animation: float 10s infinite ease-in-out alternate; }
+        .blob-1 { top: -10%; left: -10%; width: 350px; height: 350px; background: rgba(20, 184, 166, 0.4); }
+        .blob-2 { bottom: -10%; right: -10%; width: 350px; height: 350px; background: rgba(250, 204, 21, 0.3); animation-delay: -5s; }
+        
+        .glass-panel { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.5); }
+        .dark .glass-panel { background: rgba(31, 41, 55, 0.65); border: 1px solid rgba(255, 255, 255, 0.05); }
+        
+        .btn-3d { transition: all 0.1s ease; } .btn-3d:active { transform: translateY(4px); }
+        .chat-pattern { background-image: radial-gradient(rgba(0,0,0,0.1) 1px, transparent 1px); background-size: 20px 20px; }
+        .dark .chat-pattern { background-image: radial-gradient(rgba(255,255,255,0.1) 1px, transparent 1px); }
+        
+        @keyframes slideUpPopup { from { opacity: 0; transform: translateY(20px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .animate-popup { animation: slideUpPopup 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        .media-bubble img, .media-bubble video { max-width: 220px; max-height: 280px; object-fit: cover; border-radius: 10px; cursor: pointer; }
+        .sticker-bubble { font-size: 5rem; line-height: 1; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2)); animation: bounceSticker 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .custom-sticker-bubble { max-width: 120px; max-height: 120px; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2)); animation: bounceSticker 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes bounceSticker { 0% { transform: scale(0); } 80% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        
+        /* Notifikasi Toast Masuk */
+        #in-app-notification { transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .notif-hidden { transform: translateY(-150%); }
+        .notif-visible { transform: translateY(0); }
+    </style>
+</head>
+<body class="text-gray-800 dark:text-gray-200 antialiased h-screen w-full flex items-center justify-center overflow-hidden font-sans selection:bg-sapa-light selection:text-white transition-colors duration-300">
+
+    <div class="bg-animated"></div><div class="blob blob-1"></div><div class="blob blob-2"></div>
+    <audio id="notif-sound" src="data:audio/mp3;base64,//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"></audio>
+
+    <div class="w-full max-w-md h-full relative flex flex-col sm:h-[95vh] sm:rounded-3xl overflow-hidden shadow-2xl glass-panel transition-all duration-300">
+        
+        <!-- Notifikasi Masuk -->
+        <div id="in-app-notification" class="absolute top-4 left-4 right-4 z-[100] bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl shadow-xl p-3 border border-gray-200 dark:border-gray-700 flex items-center gap-3 notif-hidden cursor-pointer" onclick="window.clickNotification()">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sapa-light to-teal-300 flex items-center justify-center text-white shrink-0"><i class="fas fa-comment"></i></div>
+            <div class="flex-1 overflow-hidden">
+                <h4 id="notif-title" class="font-bold text-sm truncate">Room</h4>
+                <p id="notif-body" class="text-xs text-gray-500 dark:text-gray-400 truncate">Pesan...</p>
+            </div>
+        </div>
+
+        <!-- LOADING SCREEN -->
+        <div id="screen-loading" class="absolute inset-0 z-[100] flex flex-col items-center justify-center glass-panel">
+            <div class="relative flex justify-center items-center w-24 h-24 bg-gradient-to-tr from-sapa-dark to-sapa-light rounded-3xl shadow-lg mb-6 animate-pulse border-t border-white/40"><i class="fas fa-paper-plane text-4xl text-white"></i></div>
+            <h1 class="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-sapa-dark to-sapa-light tracking-tight mb-2">Sapa</h1>
+            <p id="loading-text" class="text-sm text-gray-500 dark:text-gray-400 font-medium">Menghubungkan ke Server...</p>
+        </div>
+
+        <!-- LOGIN SCREEN -->
+        <div id="screen-login" class="hidden absolute inset-0 z-50 flex-col items-center justify-center p-8 glass-panel">
+            <div class="w-20 h-20 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center mb-8 shadow-lg border border-gray-100 dark:border-gray-700 transform rotate-3"><i class="fas fa-fingerprint text-4xl text-sapa-light"></i></div>
+            <h1 class="text-3xl font-black mb-2 tracking-tight">Identitas Anda</h1>
+            <p class="text-gray-500 dark:text-gray-400 mb-10 text-center text-sm font-medium">Masukkan nomor atau nama unik Anda untuk memulai.</p>
+            <div class="w-full max-w-xs space-y-6">
+                <div class="relative glass-panel rounded-2xl flex items-center px-4 py-3 border border-gray-200 dark:border-gray-700 focus-within:border-sapa-light focus-within:ring-2 focus-within:ring-sapa-light/20 transition-all">
+                    <i class="fas fa-user text-sapa-light mr-3"></i>
+                    <input type="text" id="input-phone" placeholder="Nomor / ID Anda" class="appearance-none bg-transparent border-none w-full text-lg font-semibold focus:outline-none" onkeypress="if(event.key === 'Enter') window.login()">
+                </div>
+                <button onclick="window.login()" class="btn-3d w-full bg-sapa-light text-white font-bold text-lg py-4 px-4 rounded-2xl shadow-3d hover:bg-teal-400 active:shadow-3d-active focus:outline-none">Masuk ke Sapa</button>
+            </div>
+        </div>
+
+        <!-- HOME SCREEN -->
+        <div id="screen-home" class="hidden flex-col h-full absolute inset-0 z-40 bg-white/50 dark:bg-[#1f2937]/50 backdrop-blur-md">
+            <div class="px-6 py-5 flex justify-between items-center relative z-10 border-b border-gray-200/50 dark:border-gray-700/50 backdrop-blur-md">
+                <h1 class="text-2xl font-extrabold tracking-tight">Room Saya</h1>
+                <div class="flex items-center gap-4">
+                    <button onclick="window.toggleTheme()" class="w-10 h-10 rounded-full bg-white/50 dark:bg-gray-800/50 flex items-center justify-center shadow-sm border border-gray-200 dark:border-gray-700 transition-colors">
+                        <i id="theme-icon" class="fas fa-moon text-gray-600 dark:text-yellow-400"></i>
+                    </button>
+                    <div class="h-10 px-3 bg-white/50 dark:bg-gray-800/50 rounded-full flex items-center gap-2 border border-gray-200 dark:border-gray-700 shadow-sm font-semibold cursor-pointer">
+                        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                        <span id="my-phone-display" class="text-sm"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="contact-list" class="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-2">
+                <div class="p-8 text-center text-gray-400 mt-16 glass-panel rounded-3xl mx-4 border-dashed" id="empty-inbox">
+                    <div class="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-users text-2xl"></i></div>
+                    <p class="font-semibold text-lg text-gray-600 dark:text-gray-300">Belum tergabung di Room.</p>
+                    <p class="text-sm mt-1">Buat atau gabung room menggunakan ikon +</p>
+                </div>
+            </div>
+            
+            <button onclick="window.showOptionsModal()" class="btn-3d absolute bottom-8 right-6 bg-yellow-400 text-gray-900 w-16 h-16 rounded-2xl shadow-[0_6px_0_0_#ca8a04] active:shadow-[0_0px_0_0_#ca8a04] flex items-center justify-center text-2xl z-20 transition-all">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+
+        <!-- CHAT ROOM SCREEN -->
+        <div id="screen-chat" class="hidden flex-col h-full absolute inset-0 z-50 overflow-hidden relative">
+            <div id="chat-bg-gradient" class="absolute inset-0 z-0 opacity-100 transition-all duration-500"></div>
+            <div class="absolute inset-0 z-0 chat-pattern opacity-50 dark:opacity-20 pointer-events-none"></div>
+
+            <div class="px-4 py-3 flex items-center relative z-10 border-b border-white/20 dark:border-gray-800/40 backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 shadow-sm">
+                <button onclick="window.goBack()" class="w-10 h-10 rounded-xl bg-white/50 dark:bg-gray-800/50 flex items-center justify-center shadow-sm border border-gray-200 dark:border-gray-700 mr-3 active:scale-90 transition-transform">
+                    <i class="fas fa-chevron-left text-sm"></i>
+                </button>
+                <div class="flex-1 overflow-hidden" onclick="window.copyRoomCode()">
+                    <div class="flex items-center gap-2">
+                        <h2 id="chat-title" class="font-bold text-lg tracking-tight truncate"></h2>
+                    </div>
+                    <p class="text-[11px] text-gray-600 dark:text-gray-300 font-medium flex items-center gap-1 cursor-pointer hover:text-sapa-light">
+                        <i class="fas fa-key text-[9px]"></i> Kode: <span id="chat-code-subtitle" class="font-bold tracking-wider"></span> <i class="far fa-copy ml-1"></i>
+                    </p>
+                </div>
+            </div>
+
+            <div id="messages-list" class="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col relative z-10 pb-4"></div>
+                <!-- MEDIA MENUS -->
+            <div id="attachment-menu" class="hidden absolute bottom-[130px] left-4 right-16 bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl rounded-3xl p-4 shadow-2xl border border-gray-200 dark:border-gray-700 z-20 animate-popup">
+                <div class="grid grid-cols-3 gap-4 text-center justify-items-center">
+                    <button onclick="document.getElementById('image-upload').click(); window.toggleAttachmentMenu();" class="flex flex-col items-center gap-2 group">
+                        <div class="w-14 h-14 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-400 text-white flex items-center justify-center text-xl shadow-lg active:scale-90"><i class="fas fa-image"></i></div>
+                        <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">Gambar</span>
+                    </button>
+                    <button onclick="document.getElementById('video-upload').click(); window.toggleAttachmentMenu();" class="flex flex-col items-center gap-2 group">
+                        <div class="w-14 h-14 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center text-xl shadow-lg active:scale-90"><i class="fas fa-video"></i></div>
+                        <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">Video</span>
+                    </button>
+                    <button onclick="document.getElementById('doc-upload').click(); window.toggleAttachmentMenu();" class="flex flex-col items-center gap-2 group">
+                        <div class="w-14 h-14 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-400 text-white flex items-center justify-center text-xl shadow-lg active:scale-90"><i class="fas fa-file-alt"></i></div>
+                        <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">Dokumen</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="sticker-drawer" class="hidden absolute bottom-[110px] left-0 right-0 h-72 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl rounded-t-3xl shadow-2xl border-t border-gray-200 dark:border-gray-700 z-20 animate-popup flex-col overflow-hidden">
+                <div class="p-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800">
+                    <span class="text-sm font-bold"><i class="fas fa-smile text-yellow-400 mr-2"></i>Koleksi Stiker</span>
+                    <button onclick="window.toggleStickerDrawer()" class="text-gray-400 hover:text-red-500 w-8 h-8"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 flex flex-wrap gap-4 items-start" id="sticker-grid">
+                    <button onclick="document.getElementById('custom-sticker-upload').click();" class="w-16 h-16 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-400 flex flex-col items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0">
+                        <i class="fas fa-plus mb-1"></i><span class="text-[10px]">Buat</span>
+                    </button>
+                </div>
+            </div>
+
+            <input type="file" id="image-upload" accept="image/*" class="hidden" onchange="window.handleFileUpload(event, 'image')">
+            <input type="file" id="video-upload" accept="video/*" class="hidden" onchange="window.handleFileUpload(event, 'video')">
+            <input type="file" id="doc-upload" accept=".pdf,.doc,.docx,.txt" class="hidden" onchange="window.handleFileUpload(event, 'document')">
+            <input type="file" id="custom-sticker-upload" accept="image/png, image/webp, image/jpeg" class="hidden" onchange="window.handleCustomStickerUpload(event)">
+
+            <!-- AREA INPUT TEKS DENGAN FIX POSISI (TIDAK TABRAKAN DENGAN NAVIGASI HP) -->
+            <div class="px-3 pt-3 pb-8 mb-2 backdrop-blur-xl bg-white/60 dark:bg-gray-900/60 border-t border-white/30 dark:border-gray-700/50 relative z-30 shadow-[0_-4px_15px_rgba(0,0,0,0.05)]">
+                <div class="flex items-end gap-2">
+                    <div class="flex-1 bg-white dark:bg-gray-800 rounded-3xl flex items-center px-2 shadow-inner border border-gray-200 dark:border-gray-600 focus-within:border-sapa-light min-h-[50px] transition-colors">
+                        <button onclick="window.toggleStickerDrawer()" class="p-2 text-gray-400 hover:text-sapa-accent"><i class="far fa-smile text-xl"></i></button>
+                        <input type="text" id="message-input" placeholder="Tulis pesan..." class="flex-1 bg-transparent border-none focus:outline-none text-[15px] w-full py-3 px-2 dark:text-white" onkeypress="if(event.key === 'Enter') window.sendTextMessage()">
+                        <button onclick="window.toggleAttachmentMenu()" class="p-2 text-gray-400 hover:text-sapa-light"><i class="fas fa-paperclip text-lg"></i></button>
+                    </div>
+                    <button onclick="window.sendTextMessage()" id="send-btn" class="btn-3d w-12 h-12 rounded-2xl bg-sapa-light text-white shadow-3d active:shadow-3d-active flex items-center justify-center shrink-0">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL OPTIONS (+) -->
+        <div id="modal-options" class="hidden absolute inset-0 z-[60] items-center justify-center p-6 backdrop-blur-sm bg-black/50 transition-opacity">
+            <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl border border-gray-100 dark:border-gray-700">
+                <button onclick="window.hideOptionsModal()" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-gray-500 bg-gray-100 dark:bg-gray-700 rounded-full"><i class="fas fa-times"></i></button>
+                <h2 class="text-xl font-bold mb-6 text-center">Apa yang ingin Anda lakukan?</h2>
+                <div class="space-y-4">
+                    <button onclick="window.showCreateRoomModal()" class="w-full bg-sapa-light text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:bg-teal-400 transition-colors">
+                        <i class="fas fa-plus-circle text-xl"></i> Buat Room Baru
+                    </button>
+                    <button onclick="window.showJoinRoomModal()" class="w-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                        <i class="fas fa-sign-in-alt text-xl"></i> Gabung dengan Kode
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL BUAT ROOM -->
+        <div id="modal-create-room" class="hidden absolute inset-0 z-[70] items-center justify-center p-6 backdrop-blur-sm bg-black/60 transition-opacity">
+            <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl border border-gray-100 dark:border-gray-700">
+                <button onclick="window.hideCreateRoomModal()" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-gray-500 bg-gray-100 dark:bg-gray-700 rounded-full"><i class="fas fa-arrow-left"></i></button>
+                <div class="w-12 h-12 bg-sapa-light/10 rounded-2xl flex items-center justify-center mb-4 text-sapa-light text-xl"><i class="fas fa-home"></i></div>
+                <h2 class="text-xl font-bold mb-2">Buat Room</h2>
+                <p class="text-sm text-gray-500 mb-4">Beri nama untuk room ini (misal: Grup Belajar)</p>
+                <input type="text" id="new-room-name" placeholder="Nama Room" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 rounded-xl mb-6 focus:outline-none font-bold" onkeypress="if(event.key === 'Enter') window.createRoom()">
+                <button onclick="window.createRoom()" class="btn-3d w-full bg-sapa-dark text-white font-bold py-3 rounded-xl shadow-3d">Buat & Dapatkan Kode</button>
+            </div>
+        </div>
+
+        <!-- MODAL GABUNG ROOM -->
+        <div id="modal-join-room" class="hidden absolute inset-0 z-[70] items-center justify-center p-6 backdrop-blur-sm bg-black/60 transition-opacity">
+            <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl border border-gray-100 dark:border-gray-700">
+                <button onclick="window.hideJoinRoomModal()" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-gray-500 bg-gray-100 dark:bg-gray-700 rounded-full"><i class="fas fa-arrow-left"></i></button>
+                <div class="w-12 h-12 bg-yellow-400/20 rounded-2xl flex items-center justify-center mb-4 text-yellow-600 text-xl"><i class="fas fa-key"></i></div>
+                <h2 class="text-xl font-bold mb-2">Gabung Room</h2>
+                <p class="text-sm text-gray-500 mb-4">Masukkan 6 digit kode room dari teman Anda.</p>
+                <input type="text" id="join-room-code" placeholder="Misal: AB12X" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 rounded-xl mb-6 focus:outline-none font-bold uppercase tracking-widest text-center text-xl" onkeypress="if(event.key === 'Enter') window.joinRoom()" maxlength="6">
+                <button onclick="window.joinRoom()" id="btn-join" class="btn-3d w-full bg-yellow-500 text-white font-bold py-3 rounded-xl shadow-[0_4px_0_0_#ca8a04]">Masuk Room</button>
+            </div>
+        </div>
+    </div>
+     <!-- SCRIPT FIREBASE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Konfigurasi Firebase Anda
+        const firebaseConfig = {
+            apiKey: "AIzaSyB_RgyA1deRZP6-gCJEt_WVjKyytrUPfiU",
+            authDomain: "sapa-28f40.firebaseapp.com",
+            projectId: "sapa-28f40",
+            storageBucket: "sapa-28f40.firebasestorage.app",
+            messagingSenderId: "6147796257",
+            appId: "1:6147796257:web:24c06231dd8c193cfde260"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let myPhoneNumber = localStorage.getItem('sapa_phone') || null;
+        let activeRoomCode = null;
+        let activeRoomName = null;
+        let unsubscribeInbox = null;
+        let unsubscribeMessages = null;
+        let unreadNotifPhone = null;
+
+        // --- TEMA & BACKGROUND DINAMIS ---
+        function initTheme() {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
+            else document.documentElement.classList.remove('dark');
+            document.getElementById('theme-icon').className = document.documentElement.classList.contains('dark') ? 'fas fa-sun text-yellow-400' : 'fas fa-moon text-gray-600';
+        }
+        window.toggleTheme = function() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            document.getElementById('theme-icon').className = document.documentElement.classList.contains('dark') ? 'fas fa-sun text-yellow-400' : 'fas fa-moon text-gray-600';
+            if(activeRoomCode && !document.getElementById('screen-chat').classList.contains('hidden')) applyDynamicBackground(activeRoomCode);
+        }
+        initTheme();
+
+        const palettes = ['linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)', 'linear-gradient(120deg, #f093fb 0%, #f5576c 100%)', 'linear-gradient(120deg, #d4fc79 0%, #96e6a1 100%)', 'linear-gradient(to top, #a8edea 0%, #fed6e3 100%)', 'linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%)', 'linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%)'];
+        const darkPalettes = ['linear-gradient(to top, #0f2027, #203a43, #2c5364)', 'linear-gradient(to right, #141e30, #243b55)', 'linear-gradient(to right, #11998e, #38ef7d)', 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 'linear-gradient(135deg, #1f2937 0%, #111827 100%)', 'linear-gradient(to right, #000428, #004e92)'];
+        function hashCode(str) { let hash = 0; for(let i=0;i<str.length;i++) hash = ((hash<<5)-hash)+str.charCodeAt(i); return Math.abs(hash); }
+        function applyDynamicBackground(code) {
+            const arr = document.documentElement.classList.contains('dark') ? darkPalettes : palettes;
+            document.getElementById('chat-bg-gradient').style.background = arr[hashCode(code) % arr.length];
+        }
+
+        // --- SISTEM AUTENTIKASI ---
+        const initAuth = async () => {
+            try { await signInAnonymously(auth); } 
+            catch (error) { document.getElementById('loading-text').innerText = "Gagal terhubung ke Server."; }
+        };
+        initAuth();
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                if (myPhoneNumber) {
+                    document.getElementById('my-phone-display').innerText = myPhoneNumber;
+                    switchScreen('home');
+                    startRealtimeInbox();
+                } else { switchScreen('login'); }
+            }
+        });
+
+        function switchScreen(screenId) {
+            ['screen-loading', 'screen-login', 'screen-home', 'screen-chat'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            document.getElementById(`screen-${screenId}`).classList.remove('hidden');
+            if(screenId !== 'loading') document.getElementById(`screen-${screenId}`).classList.add('flex');
+        }
+
+        window.login = function() {
+            let phoneInput = document.getElementById('input-phone').value.trim();
+            if (phoneInput.length < 2) return alert("Masukkan ID/Nomor yang valid.");
+            myPhoneNumber = phoneInput; localStorage.setItem('sapa_phone', myPhoneNumber);
+            document.getElementById('my-phone-display').innerText = myPhoneNumber;
+            switchScreen('loading');
+            setTimeout(() => { switchScreen('home'); startRealtimeInbox(); }, 500);
+        };
+
+        // --- MANAJEMEN MODAL ROOM ---
+        window.showOptionsModal = () => document.getElementById('modal-options').classList.replace('hidden', 'flex');
+        window.hideOptionsModal = () => document.getElementById('modal-options').classList.replace('flex', 'hidden');
+        
+        window.showCreateRoomModal = () => { window.hideOptionsModal(); document.getElementById('modal-create-room').classList.replace('hidden', 'flex'); setTimeout(()=>document.getElementById('new-room-name').focus(),100); };
+        window.hideCreateRoomModal = () => { document.getElementById('modal-create-room').classList.replace('flex', 'hidden'); };
+        
+        window.showJoinRoomModal = () => { window.hideOptionsModal(); document.getElementById('modal-join-room').classList.replace('hidden', 'flex'); setTimeout(()=>document.getElementById('join-room-code').focus(),100); };
+        window.hideJoinRoomModal = () => { document.getElementById('modal-join-room').classList.replace('flex', 'hidden'); document.getElementById('btn-join').innerText = "Masuk Room"; };
+
+        // --- LOGIKA PEMBUATAN & GABUNG ROOM (FIREBASE) ---
+        window.createRoom = async () => {
+            const roomName = document.getElementById('new-room-name').value.trim();
+            if(!roomName) return alert('Nama Room tidak boleh kosong!');
+            
+            // Generate Random 6 Karakter Kode
+            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            try {
+                // 1. Simpan Meta Data Room
+                await setDoc(doc(db, 'sapa_rooms_metadata', code), {
+                    name: roomName,
+                    participants: [myPhoneNumber],
+                    createdBy: myPhoneNumber,
+                    createdAt: serverTimestamp()
+                });
+                
+                // 2. Tambahkan ke Inbox Saya
+                await setDoc(doc(db, `sapa_inbox_${myPhoneNumber}`, code), {
+                    roomCode: code,
+                    roomName: roomName,
+                    lastMessage: 'Room berhasil dibuat!',
+                    lastSender: 'Sistem',
+                    timestamp: serverTimestamp()
+                });
+
+                document.getElementById('new-room-name').value = '';
+                window.hideCreateRoomModal();
+                window.openChat(code, roomName);
+                
+            } catch (error) {
+                console.error(error); alert("Gagal membuat Room. Cek koneksi Anda.");
+            }
+        };
+
+        window.joinRoom = async () => {
+            const code = document.getElementById('join-room-code').value.trim().toUpperCase();
+            if(code.length < 3) return alert('Masukkan kode yang valid.');
+            
+            const btn = document.getElementById('btn-join');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mencari...';
+
+            try {
+                // 1. Cek apakah room ada
+                const roomDoc = await getDoc(doc(db, 'sapa_rooms_metadata', code));
+                
+                if(!roomDoc.exists()) {
+                    btn.innerText = "Masuk Room";
+                    return alert('Kode Room tidak ditemukan atau salah!');
+                }
+
+                const roomData = roomDoc.data();
+
+                // 2. Tambahkan diri saya ke array participants room tersebut
+                await updateDoc(doc(db, 'sapa_rooms_metadata', code), {
+                    participants: arrayUnion(myPhoneNumber)
+                });
+
+                // 3. Tambahkan ke Inbox Saya
+                await setDoc(doc(db, `sapa_inbox_${myPhoneNumber}`, code), {
+                    roomCode: code,
+                    roomName: roomData.name,
+                    lastMessage: 'Anda bergabung ke dalam room',
+                    lastSender: 'Sistem',
+                    timestamp: serverTimestamp()
+                });
+
+                document.getElementById('join-room-code').value = '';
+                window.hideJoinRoomModal();
+                btn.innerText = "Masuk Room";
+                window.openChat(code, roomData.name);
+
+            } catch(error) {
+                console.error(error); alert("Gagal masuk room."); btn.innerText = "Masuk Room";
+            }
+        };
+          // --- DASHBOARD INBOX ---
+        let inboxDataCache = {};
+        function startRealtimeInbox() {
+            if (!currentUser || !myPhoneNumber) return;
+            const inboxRef = collection(db, `sapa_inbox_${myPhoneNumber}`);
+            
+            if (unsubscribeInbox) unsubscribeInbox();
+            unsubscribeInbox = onSnapshot(inboxRef, (snapshot) => {
+                let rooms = [];
+                snapshot.forEach(doc => {
+                    let data = doc.data();
+                    let code = doc.id;
+                    
+                    let cachedTime = inboxDataCache[code]?.time || 0;
+                    let newTime = data.timestamp ? data.timestamp.toMillis() : Date.now();
+                    
+                    if (newTime > cachedTime && cachedTime !== 0 && data.lastSender !== myPhoneNumber && data.lastSender !== 'Sistem' && activeRoomCode !== code) {
+                        triggerNotification(data.roomName, `Pesan baru dari ${data.lastSender}`, code);
+                    }
+                    
+                    rooms.push({ id: code, ...data, time: newTime });
+                    inboxDataCache[code] = { time: newTime };
+                });
+
+                rooms.sort((a, b) => b.time - a.time);
+                renderInbox(rooms);
+            });
+        }
+
+        function renderInbox(rooms) {
+            const listEl = document.getElementById('contact-list');
+            listEl.innerHTML = '';
+            
+            if (rooms.length === 0) { document.getElementById('empty-inbox').style.display = 'block'; return; }
+            document.getElementById('empty-inbox').style.display = 'none';
+
+            rooms.forEach(room => {
+                const item = document.createElement('div');
+                item.className = 'glass-panel p-4 rounded-2xl cursor-pointer hover:bg-white/80 dark:hover:bg-gray-800/80 transition-colors flex items-center mb-3 shadow-sm border border-gray-100 dark:border-gray-700';
+                item.onclick = () => window.openChat(room.roomCode, room.roomName);
+                
+                let timeStr = room.timestamp ? room.timestamp.toDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+                const avatarColor = ['from-red-400 to-red-500', 'from-blue-400 to-blue-500', 'from-green-400 to-green-500', 'from-purple-400 to-purple-500', 'from-yellow-500 to-orange-500'][hashCode(room.roomCode) % 5];
+                
+                const isUnread = (room.lastSender !== myPhoneNumber && room.lastSender !== 'Sistem' && room.roomCode !== activeRoomCode);
+                const textClass = isUnread ? 'font-bold text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400';
+
+                item.innerHTML = `
+                    <div class="w-13 h-13 rounded-full bg-gradient-to-tr ${avatarColor} flex items-center justify-center text-white shrink-0 shadow-md w-12 h-12 text-lg font-bold">
+                        ${room.roomName.charAt(0).toUpperCase()}
+                    </div>
+                    <div class="ml-4 flex-1 overflow-hidden">
+                        <div class="flex justify-between items-baseline mb-1">
+                            <h3 class="text-[16px] font-bold text-gray-900 dark:text-white truncate">${room.roomName}</h3>
+                            <span class="text-[11px] text-gray-400 shrink-0 ml-2">${timeStr}</span>
+                        </div>
+                        <p class="text-[13px] ${textClass} truncate">${room.lastSender === 'Sistem' ? '' : room.lastSender + ': '}${room.lastMessage}</p>
+                    </div>`;
+                listEl.appendChild(item);
+            });
+        }
+
+        // --- NOTIFIKASI ---
+        function triggerNotification(roomName, message, roomCode) {
+            document.getElementById('notif-sound').play().catch(e=>e);
+            unreadNotifPhone = roomCode;
+
+            const notifEl = document.getElementById('in-app-notification');
+            document.getElementById('notif-title').innerText = roomName;
+            document.getElementById('notif-body').innerText = message;
+            notifEl.classList.replace('notif-hidden', 'notif-visible');
+            setTimeout(() => notifEl.classList.replace('notif-visible', 'notif-hidden'), 4000);
+            
+            if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+                new Notification(`${roomName}`, { body: message });
+            }
+        }
+        window.clickNotification = function() {
+            if(unreadNotifPhone) {
+                document.getElementById('in-app-notification').classList.replace('notif-visible', 'notif-hidden');
+                // We need to fetch room name from cache or assume it's there
+                window.openChat(unreadNotifPhone, "Room"); 
+            }
+        };
+
+        // --- RUANG OBROLAN (ROOM CHAT) ---
+        window.openChat = (code, name) => {
+            activeRoomCode = code;
+            activeRoomName = name;
+            
+            document.getElementById('chat-title').innerText = name;
+            document.getElementById('chat-code-subtitle').innerText = code;
+            
+            applyDynamicBackground(code);
+            switchScreen('chat');
+            document.getElementById('message-input').value = '';
+            renderStickerDrawer();
+            
+            startRealtimeMessages(code);
+        };
+
+        window.goBack = () => {
+            activeRoomCode = null; 
+            if (unsubscribeMessages) unsubscribeMessages();
+            switchScreen('home'); 
+            document.getElementById('attachment-menu').classList.add('hidden');
+            document.getElementById('sticker-drawer').classList.add('hidden');
+        };
+
+        window.copyRoomCode = () => {
+            navigator.clipboard.writeText(activeRoomCode);
+            alert(`Kode Room ${activeRoomCode} berhasil disalin! Bagikan ke teman Anda.`);
+        };
+
+        function startRealtimeMessages(code) {
+            const messagesRef = collection(db, `sapa_room_messages_${code}`);
+            if (unsubscribeMessages) unsubscribeMessages();
+
+            unsubscribeMessages = onSnapshot(messagesRef, (snapshot) => {
+                let msgs = [];
+                snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+                
+                msgs.sort((a, b) => {
+                    let timeA = a.timestamp ? a.timestamp.toMillis() : Date.now();
+                    let timeB = b.timestamp ? b.timestamp.toMillis() : Date.now();
+                    return timeA - timeB;
+                });
+
+                const listEl = document.getElementById('messages-list');
+                listEl.innerHTML = '';
+                msgs.forEach(msg => {
+                    let isMe = msg.sender === myPhoneNumber;
+                    let timeStr = msg.timestamp ? msg.timestamp.toDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '...';
+                    renderSingleMessage(msg, isMe, timeStr);
+                });
+                setTimeout(() => { listEl.scrollTop = listEl.scrollHeight; }, 100);
+            });
+        }
+
+        window.sendTextMessage = () => {
+            const text = document.getElementById('message-input').value.trim();
+            if (!text || !activeRoomCode) return;
+            document.getElementById('message-input').value = '';
+            processSendMessage(text, 'text');
+        };
+
+        window.sendMediaMessage = (content, type) => {
+            if (!activeRoomCode) return;
+            if (type.includes('sticker')) window.toggleStickerDrawer();
+            processSendMessage(content, type);
+        };
+
+        async function processSendMessage(content, type) {
+            const messagesRef = collection(db, `sapa_room_messages_${activeRoomCode}`);
+            let lastMsgText = type === 'text' ? content : (type === 'image' ? '📷 Foto' : (type === 'video' ? '🎥 Video' : (type === 'document' ? '📄 Dokumen' : '🤩 Stiker')));
+
+            const sendBtn = document.getElementById('send-btn');
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                // 1. Kirim Pesan ke Room
+                await addDoc(messagesRef, { type: type, content: content, sender: myPhoneNumber, timestamp: serverTimestamp() });
+                
+                // 2. Ambil daftar partisipan room untuk update inbox mereka
+                const roomDoc = await getDoc(doc(db, 'sapa_rooms_metadata', activeRoomCode));
+                if(roomDoc.exists()) {
+                    let participants = roomDoc.data().participants || [];
+                    
+                    // Update inbox SEMUA orang yang ada di room ini
+                    participants.forEach(async (p) => {
+                        await setDoc(doc(db, `sapa_inbox_${p}`, activeRoomCode), {
+                            lastMessage: lastMsgText, 
+                            lastSender: myPhoneNumber, 
+                            timestamp: serverTimestamp()
+                        }, { merge: true });
+                    });
+                }
+
+            } catch (error) {
+                console.error("Gagal mengirim pesan:", error);
+                alert("Pengiriman gagal! Pastikan file tidak terlalu besar (Max Firebase 1MB).");
+            }
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+        }
+
+// --- FILE UPLOAD (DENGAN KOMPRESI FIREBASE) ---
+        window.toggleAttachmentMenu = () => { document.getElementById('sticker-drawer').classList.add('hidden'); document.getElementById('attachment-menu').classList.toggle('hidden'); };
+        window.toggleStickerDrawer = () => { document.getElementById('attachment-menu').classList.add('hidden'); document.getElementById('sticker-drawer').classList.toggle('hidden'); };
+
+        window.handleFileUpload = function(event, type) {
+            const file = event.target.files[0];
+            if(!file) return;
+            if(file.size > 800 * 1024 && type !== 'image') {
+                alert("Maksimal ukuran Video/Dokumen adalah 800 KB untuk menjaga stabilitas Firebase.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (type === 'image') {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width, h = img.height;
+                        const maxDim = 600; 
+                        if (w > maxDim || h > maxDim) {
+                            const ratio = Math.min(maxDim/w, maxDim/h);
+                            w *= ratio; h *= ratio;
+                        }
+                        canvas.width = w; canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        window.sendMediaMessage(canvas.toDataURL('image/jpeg', 0.6), 'image');
+                    };
+                    img.src = e.target.result;
+                } 
+                else if (type === 'document') {
+                    window.sendMediaMessage(`${file.name}|${e.target.result}`, 'document');
+                } else {
+                    window.sendMediaMessage(e.target.result, type);
+                }
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        };
+
+        // --- STIKER CUSTOM ---
+        const defaultEmojiStickers = ['🐶','❤️','😂','🔥','🥳','😎','👍','🚀','🐼','👻','💩','👽'];
+        function renderStickerDrawer() {
+            const grid = document.getElementById('sticker-grid');
+            while (grid.children.length > 1) { grid.removeChild(grid.lastChild); } 
+            
+            let customStickers = JSON.parse(localStorage.getItem('sapa_custom_stickers') || '[]');
+            customStickers.forEach(base64Image => {
+                const btn = document.createElement('button');
+                btn.className = 'w-16 h-16 hover:scale-110 active:scale-90 transition-transform flex items-center justify-center shrink-0';
+                btn.onclick = () => window.sendMediaMessage(base64Image, 'custom_sticker');
+                btn.innerHTML = `<img src="${base64Image}" class="w-full h-full object-contain filter drop-shadow-md rounded-lg">`;
+                grid.appendChild(btn);
+            });
+            defaultEmojiStickers.forEach(emoji => {
+                const btn = document.createElement('button');
+                btn.className = 'text-5xl hover:scale-110 active:scale-90 transition-transform w-16 h-16 flex items-center justify-center shrink-0';
+                btn.onclick = () => window.sendMediaMessage(emoji, 'sticker');
+                btn.innerText = emoji;
+                grid.appendChild(btn);
+            });
+        }
+
+        window.handleCustomStickerUpload = function(event) {
+            const file = event.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let w = img.width, h = img.height;
+                    const maxDim = 200; 
+                    if (w > maxDim || h > maxDim) {
+                        const ratio = Math.min(maxDim/w, maxDim/h);
+                        w *= ratio; h *= ratio;
+                    }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    let customStickers = JSON.parse(localStorage.getItem('sapa_custom_stickers') || '[]');
+                    customStickers.unshift(canvas.toDataURL('image/webp', 0.8));
+                    localStorage.setItem('sapa_custom_stickers', JSON.stringify(customStickers));
+                    renderStickerDrawer(); 
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        };
+
+        // --- RENDERER VISUAL PESAN ---
+        function renderSingleMessage(msg, isMe, timeStr) {
+            const listEl = document.getElementById('messages-list');
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = `flex w-full flex-col ${isMe ? 'items-end' : 'items-start'}`;
+            
+            // Nama Pengirim (Muncul jika bukan pesan dari saya, khusus untuk Room Chat)
+            let senderNameHTML = '';
+            if (!isMe) {
+                senderNameHTML = `<p class="text-[10px] font-extrabold text-white/80 dark:text-gray-300 ml-2 mb-1 drop-shadow-md">${msg.sender}</p>`;
+            }
+
+            const bgClass = isMe ? 'bg-sapa-light text-white' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100';
+            const borderClass = isMe ? 'border-sapa-dark/20' : 'border-white/50 dark:border-gray-700/50';
+            const radiusClass = isMe ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm';
+            
+            let contentHTML = '';
+            if (msg.type === 'text') {
+                contentHTML = `<div class="${bgClass} ${radiusClass} ${borderClass} border px-4 py-2.5 max-w-[80%] shadow-md relative group backdrop-blur-md"><p class="text-[15px] font-medium break-words leading-relaxed pr-10">${msg.content}</p><span class="text-[10px] opacity-70 absolute bottom-1.5 right-2 flex items-center font-semibold">${timeStr}</span></div>`;
+            } else if (msg.type === 'image') {
+                contentHTML = `<div class="${bgClass} ${radiusClass} ${borderClass} border p-1 max-w-[70%] shadow-md relative group backdrop-blur-md media-bubble"><img src="${msg.content}"><span class="text-[10px] text-white bg-black/40 px-1.5 rounded absolute bottom-2 right-2 flex items-center font-semibold backdrop-blur-sm">${timeStr}</span></div>`;
+            } else if (msg.type === 'video') {
+                contentHTML = `<div class="${bgClass} ${radiusClass} ${borderClass} border p-1 max-w-[70%] shadow-md relative group backdrop-blur-md media-bubble"><video controls src="${msg.content}"></video><span class="text-[10px] text-white bg-black/40 px-1.5 rounded absolute bottom-2 right-2 flex items-center font-semibold backdrop-blur-sm">${timeStr}</span></div>`;
+            } else if (msg.type === 'document') {
+                const separatorIndex = msg.content.indexOf('|');
+                let fileName = "Dokumen"; let fileUrl = msg.content;
+                if(separatorIndex > -1) { fileName = msg.content.substring(0, separatorIndex); fileUrl = msg.content.substring(separatorIndex + 1); }
+                contentHTML = `<div class="${bgClass} ${radiusClass} ${borderClass} border p-3 max-w-[80%] shadow-md relative group backdrop-blur-md flex items-center gap-3"><div class="w-10 h-10 bg-black/10 rounded-lg flex items-center justify-center shrink-0"><i class="fas fa-file-alt text-xl"></i></div><div class="flex-1 overflow-hidden pr-8"><p class="text-sm font-bold truncate">${fileName}</p><a href="${fileUrl}" download="${fileName}" class="text-[11px] opacity-80 underline hover:text-white">Unduh File</a></div><span class="text-[10px] opacity-70 absolute bottom-1.5 right-2 flex items-center font-semibold">${timeStr}</span></div>`;
+            } else if (msg.type === 'sticker') {
+                contentHTML = `<div class="max-w-[50%] relative group"><div class="sticker-bubble">${msg.content}</div><span class="text-[10px] text-gray-500 absolute -bottom-4 ${isMe ? 'right-0' : 'left-0'} font-semibold bg-white/50 px-1 rounded-md">${timeStr}</span></div>`;
+            } else if (msg.type === 'custom_sticker') {
+                contentHTML = `<div class="max-w-[50%] relative group"><img src="${msg.content}" class="custom-sticker-bubble"><span class="text-[10px] text-gray-500 absolute -bottom-4 ${isMe ? 'right-0' : 'left-0'} font-semibold bg-white/50 px-1 rounded-md">${timeStr}</span></div>`;
+            }
+
+            wrapperDiv.innerHTML = senderNameHTML + contentHTML;
+            listEl.appendChild(wrapperDiv);
+        }
+    </script>
+</body>
+</html>
